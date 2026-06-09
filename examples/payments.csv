@@ -1,0 +1,11 @@
+store_id,coffee_type,price,currency,loyalty_card_id
+coffee-place-001,LATTE,3.50,EUR,card-1001
+coffee-place-001,ESPRESSO,2.00,EUR,card-1002
+coffee-place-001,CAPPUCCINO,3.20,EUR,card-1003
+coffee-place-001,flat_white,3.80,eur,card-1004
+coffee-place-001,COLD_BREW,4.10,EUR,card-1005
+coffee-place-001,MOCHA,4.00,EUR,card-1006
+coffee-place-001,AMERICANO,2.50,EUR,card-1007
+coffee-place-001,UNICORN_FRAPPE,5.00,EUR,card-2001
+coffee-place-001,LATTE,-1.00,EUR,card-2002
+coffee-place-001,DOUBLE_ESPRESSO,2.80,EURO,card-2003
