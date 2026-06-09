@@ -1,0 +1,9 @@
+[
+  {
+    "name": "spring-boot-app",
+    "listen": "0.0.0.0:9091",
+    "upstream": "external-app:8080",
+    "enabled": true,
+    "toxics": []
+  }
+]

@@ -1,0 +1,21 @@
+# Build context for external-app is the repo root; keep it lean.
+.git
+**/.git
+client
+examples
+out
+scripts
+docs
+*.md
+.gitmodules
+.github
+# Within the submodule, we only need the wrapper, build scripts and sources.
+external/.git
+external/.gitignore
+external/build
+external/.gradle
+external/compose.yaml
+external/toxiproxy.json
+external/README.md
+external/HELP.md
+external/AGENTS.md

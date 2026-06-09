@@ -1,0 +1,68 @@
+# One-command stack for the Coffee Place payment-sync project.
+#
+#   external-app  the StarHarbour Payments Service (Central System), built from the
+#                 ./external submodule. Listens on 8080.
+#   toxiproxy     sits IN FRONT of external-app. Callers hit 9091 to route through the
+#                 proxy and experience injected network faults; 8474 is its admin API.
+#   client        our Python CSV → API sync tool. Routes through Toxiproxy by default.
+#
+# Usage:
+#   docker compose up --build -d external-app toxiproxy   # start the Central System
+#   docker compose run --rm client examples/payments.csv  # sync a notebook CSV
+#
+# The `client` service is in the `tools` profile so it does not start with the stack;
+# run it on demand with `docker compose run`.
+
+services:
+  external-app:
+    build:
+      context: .
+      dockerfile: docker/external.Dockerfile
+    container_name: coffee-external-app
+    ports:
+      - "8080:8080" # direct access to the app (bypasses Toxiproxy)
+    healthcheck:
+      # The list endpoint requires a Store-Id header; any 2xx means the app is up.
+      test: ["CMD", "curl", "-fsS", "-H", "Store-Id: healthcheck", "http://localhost:8080/api/v1/payments?storeId=healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:latest
+    container_name: coffee-toxiproxy
+    depends_on:
+      external-app:
+        condition: service_healthy
+    ports:
+      - "8474:8474" # Toxiproxy REST API — add/remove toxics here
+      - "9091:9091" # Proxy port — callers hit this instead of the app directly
+    volumes:
+      - ./docker/toxiproxy.json:/toxiproxy.json:ro
+    command: ["-config", "/toxiproxy.json", "-host", "0.0.0.0"]
+    healthcheck:
+      test: ["CMD", "/toxiproxy-cli", "list"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+      start_period: 1s
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    image: coffee-place-payment-sync-client
+    profiles: ["tools"]
+    depends_on:
+      toxiproxy:
+        condition: service_healthy
+    environment:
+      # By default route through Toxiproxy so the client genuinely feels injected faults.
+      COFFEE_SYNC_BASE_URL: "http://toxiproxy:9091"
+      COFFEE_SYNC_STORE_ID: "coffee-place-001"
+    volumes:
+      # Mount the repo so example CSVs and the dead-letter output are reachable from the host.
+      - ./examples:/work/examples:ro
+      - ./out:/work/out
+    working_dir: /work
