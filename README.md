@@ -1,0 +1,136 @@
+# Coffee Place → Central System: Reliable Payment Sync
+
+> Harbour.Space — Cloud Computing course project.
+
+You own the Coffee Place. All day you jot payments in a notebook. At closing time you
+export that notebook as a CSV and have to **reliably propagate every payment** to the
+**Central System** — even when the network between you and it is slow, flaky, or drops
+responses entirely.
+
+This repo is that automation: a small Python CLI (`coffee-sync`) that ingests a notebook
+CSV and ships each payment to the Central System with **retries, deterministic
+idempotency keys, local validation, and a dead-letter report** — wrapped in a one-command
+Docker Compose stack.
+
+The Central System is the [StarHarbour Payments Service](https://github.com/igor-sakhankov/harbour-cloud-26)
+(a Spring Boot API built for this course), vendored here as the [`external/`](external) git
+submodule. It deliberately demonstrates idempotent writes, input validation, and network
+**fault injection via [Toxiproxy](https://github.com/Shopify/toxiproxy)**.
+
+## Architecture
+
+```
+  examples/payments.csv
+          │
+          ▼
+   ┌──────────────┐      POST /api/v1/payments       ┌────────────┐   proxies   ┌──────────────┐
+   │  coffee-sync │ ───────────────────────────────▶ │ Toxiproxy  │ ──────────▶ │ external-app │
+   │  (Python CLI)│   Store-Id + Idempotency-Key      │  :9091     │             │  Spring :8080│
+   └──────────────┘   retries · backoff · validate    │  :8474 API │             │ (in-memory)  │
+          │                                            └────────────┘             └──────────────┘
+          ▼                                            inject latency / timeout
+   out/dead-letter.csv  (rows that permanently failed)
+```
+
+The client routes through **Toxiproxy (9091)** by default, so it genuinely experiences
+whatever faults are injected — the resilience is real, not theoretical.
+
+## The three reliability guarantees
+
+1. **At-least-once delivery** — connection errors, timeouts, and HTTP 5xx are retried
+   with exponential backoff + jitter (`tenacity`). Validation errors (4xx) are treated
+   as *permanent* and never retried.
+2. **Exactly-once effect via idempotency** — each row gets a deterministic
+   `Idempotency-Key = sha256(store_id|coffee_type|price|currency|loyalty_card_id)`. The
+   server dedupes on `(Store-Id, Idempotency-Key)`, so retries — and even re-running the
+   whole CSV after a crash — never create duplicates. This holds even under *ambiguous*
+   failures (the write lands but the response is lost): the retry just replays.
+3. **Fail safe, not silent** — invalid rows are caught locally before any network call;
+   rows that permanently fail are written to `out/dead-letter.csv` and the process exits
+   non-zero so a scheduler/CI notices.
+
+## Quick start
+
+Requirements: Docker + Docker Compose. (For local dev of the client: [uv](https://docs.astral.sh/uv/).)
+
+```bash
+git clone --recurse-submodules https://github.com/DanielUH2019/coffee-place-payment-sync
+cd coffee-place-payment-sync
+# if you forgot --recurse-submodules:  git submodule update --init
+
+make up                       # build + start the Central System (external-app + toxiproxy)
+make sync                     # sync examples/payments.csv through Toxiproxy
+make sync CSV=path/to/your.csv
+make demo                     # happy path → idempotent replay → fault injection → reset
+make down                     # tear everything down
+```
+
+`make help` lists all targets.
+
+## CSV format (the notebook export)
+
+Header row, required columns: `coffee_type, price, currency, loyalty_card_id`.
+Optional: `store_id` (per-row; otherwise the `--store-id` default), `idempotency_key`
+(explicit; otherwise derived). `coffee_type`/`currency` are upper-cased automatically.
+
+```csv
+store_id,coffee_type,price,currency,loyalty_card_id
+coffee-place-001,LATTE,3.50,EUR,card-1001
+coffee-place-001,ESPRESSO,2.00,EUR,card-1002
+```
+
+Field rules mirror the server (`coffee_type` ∈ the supported enum; `price` > 0 with ≤2
+decimals; `currency` a 3-letter ISO-4217 code; `loyalty_card_id` required). See
+[`examples/payments.csv`](examples/payments.csv) for a sample that includes a few
+intentionally-bad rows to show dead-lettering.
+
+## Running the client without Docker
+
+```bash
+cd client
+uv sync
+uv run coffee-sync ../examples/payments.csv --base-url http://localhost:9091
+```
+
+Key flags: `--base-url`, `--store-id`, `--dead-letter`, `--timeout`, `--max-retries`, `-v`.
+
+## Testing
+
+```bash
+make test               # unit tests (mocked HTTP via respx — no Docker needed)
+make test-integration   # live end-to-end tests against the running stack
+```
+
+The **unit** suite deterministically proves the client logic (retry on 5xx/timeout,
+no-retry on 4xx, stable idempotency keys, 200-vs-201 accounting, dead-lettering, CSV
+parsing/validation). The **integration** suite runs against the real containerised
+service through Toxiproxy and asserts genuine end-to-end behaviour:
+
+- happy path creates all rows and they read back;
+- re-running the same file replays everything (200) with no duplicates;
+- delivery still succeeds under injected latency;
+- under an *ambiguous* timeout (response blocked, write lands) the client retries,
+  dead-letters, and the deterministic idempotency key keeps the server at **exactly one
+  payment per row** — recovering to replays once the fault clears;
+- invalid rows never persist.
+
+## Demonstrating resilience manually
+
+```bash
+make inject-latency MS=2000   # add latency to the proxy
+make inject-timeout           # block the response path
+make sync                     # watch retries/backoff in the logs
+make reset-toxics             # clean network
+```
+
+## Layout
+
+| Path | What |
+|------|------|
+| `client/` | the `coffee-sync` Python package (uv-managed) + tests |
+| `docker/external.Dockerfile` | multi-stage build of the Spring app from the submodule |
+| `docker/toxiproxy.json` | proxy config: `spring-boot-app` 9091 → `external-app:8080` |
+| `docker-compose.yml` | wires `external-app` + `toxiproxy` + `client` |
+| `external/` | the Central System, as a **git submodule** (never edited here) |
+| `scripts/` | Toxiproxy inject/reset helpers + the demo |
+| `examples/payments.csv` | sample notebook export |

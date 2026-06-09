@@ -1,0 +1,13 @@
+# Generated output
+out/
+
+# Python / uv
+client/.venv/
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
