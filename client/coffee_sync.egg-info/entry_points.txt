@@ -1,2 +1,0 @@
-[console_scripts]
-coffee-sync = coffee_sync.cli:main

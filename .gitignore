@@ -6,6 +6,7 @@ client/.venv/
 **/__pycache__/
 **/.pytest_cache/
 *.pyc
+*.egg-info/
 
 # Editor / OS
 .DS_Store
