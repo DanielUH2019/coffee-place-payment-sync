@@ -1,0 +1,33 @@
+[project]
+name = "coffee-sync"
+version = "0.1.0"
+description = "Reliably propagate Coffee Place notebook payments (CSV) to the StarHarbour Central System."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "tenacity>=8.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "respx>=0.21",
+]
+
+[project.scripts]
+coffee-sync = "coffee_sync.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["coffee_sync*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: end-to-end tests that require the live Docker Compose stack",
+]
+testpaths = ["tests"]
