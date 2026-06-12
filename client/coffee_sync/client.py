@@ -72,7 +72,16 @@ class PaymentsClient:
         self._max_retries = max_retries
         self._backoff_initial = backoff_initial
         self._backoff_max = backoff_max
-        self._client = client or httpx.Client(base_url=self._base_url, timeout=timeout)
+        # follow_redirects=True so the client works behind a redirect load
+        # balancer: the LB answers with a 307 (Temporary Redirect) and httpx
+        # re-sends the POST — method + body preserved — straight to the chosen
+        # backend. Custom headers (Store-Id, Idempotency-Key) survive the hop
+        # (httpx only strips Authorization/Cookie cross-host), so the idempotent
+        # exactly-once behaviour holds end-to-end. Inert on the direct/Toxiproxy
+        # path, which never returns a 3xx.
+        self._client = client or httpx.Client(
+            base_url=self._base_url, timeout=timeout, follow_redirects=True
+        )
         self._owns_client = client is None
 
     def __enter__(self) -> "PaymentsClient":
