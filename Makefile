@@ -1,9 +1,13 @@
 SHELL := /bin/bash
 CSV ?= examples/payments.csv
 
+LB_COMPOSE := -f docker-compose.yml -f docker-compose.lb.yml
+LB_REPLICAS ?= 3
+
 .PHONY: help up down logs build sync demo \
         inject-latency inject-timeout reset-toxics \
-        test test-integration lint clean
+        test test-integration lint clean \
+        lb-test lb-up lb-down lb-demo test-lb-integration
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -47,3 +51,25 @@ test-integration: up ## Run live end-to-end tests against the running stack
 
 clean: ## Remove generated output
 	rm -rf out client/.venv client/.pytest_cache
+
+# ── Redirect load balancer (homework 2) ──────────────────────────────────────
+
+lb-test: ## Run the load balancer's Go unit tests
+	cd redirect-lb && go test ./...
+
+lb-up: ## Build + start the LB in front of $(LB_REPLICAS) app replicas
+	# external-app (port 8080) is started too so the integration suite's
+	# require_stack guard passes; the LB itself only discovers external-app-lb.
+	docker compose $(LB_COMPOSE) up -d --build \
+		--scale external-app-lb=$(LB_REPLICAS) external-app external-app-lb lb
+
+lb-down: ## Stop and remove the LB stack
+	docker compose $(LB_COMPOSE) down -v
+
+lb-demo: ## Discovery + distribution + end-to-end + self-healing demo
+	REPLICAS=$(LB_REPLICAS) ./scripts/lb_demo.sh
+
+test-lb-integration: lb-up ## Live load-balancer integration tests (drives docker compose)
+	cd client && LB_URL=http://localhost:8090 \
+		LB_COMPOSE="$(LB_COMPOSE)" \
+		uv run pytest -m integration tests/integration/test_load_balancer.py -v
