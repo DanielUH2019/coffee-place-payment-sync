@@ -1,0 +1,86 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: client/uv.lock
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Run unit tests
+        run: uv run pytest -m "not integration"
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: client/uv.lock
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: client
+        run: uv sync --frozen --extra dev
+
+      - name: Start async integration stack
+        run: make async-up
+
+      - name: Run live integration tests
+        working-directory: client
+        env:
+          COFFEE_SYNC_BASE_URL: http://localhost:9091
+          COFFEE_SYNC_DIRECT_URL: http://localhost:8080
+          COFFEE_SYNC_ASYNC_API_URL: http://localhost:8000
+          TOXIPROXY_ADMIN: http://localhost:8474
+        run: >
+          uv run pytest -m integration
+          tests/integration/test_end_to_end.py
+          tests/integration/test_async_requests.py
+          -v
+
+      - name: Dump Docker logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop integration stack
+        if: always()
+        run: make async-down
