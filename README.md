@@ -123,6 +123,33 @@ make sync                     # watch retries/backoff in the logs
 make reset-toxics             # clean network
 ```
 
+## Async bulk API with sharded Postgres
+
+Homework 3 adds an asynchronous ingestion service in front of the same Central System.
+The API stores a bulk JSON request in a statically-sharded Postgres setup and returns a
+request ID immediately; a separate worker drains pending rows and creates each payment in
+the remote Central System.
+
+```bash
+make async-up
+
+curl -fsS -X POST http://localhost:8000/api/v1/payment-requests \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "defaultStoreId": "coffee-place-001",
+    "payments": [
+      {"coffeeType":"LATTE","price":"3.50","currency":"EUR","loyaltyCardId":"card-async-1"},
+      {"coffeeType":"ESPRESSO","price":"2.00","currency":"EUR","loyaltyCardId":"card-async-2"}
+    ]
+  }'
+
+curl -fsS http://localhost:8000/api/v1/payment-requests/<requestId>
+```
+
+The default Compose stack starts two shards, `postgres-shard-0` and `postgres-shard-1`.
+Shard routing is static: `sha256(requestId) % shard_count`. Configure shards with
+`COFFEE_SYNC_DB_SHARDS`, a comma-separated list of Postgres DSNs.
+
 ## Layout
 
 | Path | What |
@@ -131,6 +158,7 @@ make reset-toxics             # clean network
 | `docker/external.Dockerfile` | multi-stage build of the Spring app from the submodule |
 | `docker/toxiproxy.json` | proxy config: `spring-boot-app` 9091 → `external-app:8080` |
 | `docker-compose.yml` | wires `external-app` + `toxiproxy` + `client` |
+| `postgres-shard-0/1` | Compose services for the async API's sharded Postgres storage |
 | `external/` | the Central System, as a **git submodule** (never edited here) |
 | `scripts/` | Toxiproxy inject/reset helpers + the demo |
 | `examples/payments.csv` | sample notebook export |
