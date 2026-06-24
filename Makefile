@@ -95,8 +95,8 @@ test-lb-integration: lb-up ## Live load-balancer integration tests (drives docke
 
 # ── Order-Ahead durable workflow (homework 4, Temporal) ──────────────────────
 
-temporal-up: ## Start the Temporal dev server (in-memory; Web UI on :8233)
-	temporal server start-dev
+temporal-up: ## Start the dockerised Temporal dev server (in-memory; Web UI on :8233)
+	docker compose up -d temporal
 
 order-worker: ## Run the Order-Ahead Temporal worker (needs temporal-up + make up)
 	cd client && uv run coffee-order-worker

@@ -162,16 +162,17 @@ engine-choice / determinism / compensation report and
 [`docs/order-ahead-states.md`](docs/order-ahead-states.md) for the state diagram.
 
 ```bash
-brew install temporal          # one-time: the Temporal CLI (dev server)
-
-# three terminals:
 make up                        # external-app + toxiproxy (live Payments API on :9091)
-make temporal-up               # Temporal dev server + Web UI on http://localhost:8233
-make order-worker              # the Order-Ahead worker
+make temporal-up               # dockerised Temporal dev server + Web UI on http://localhost:8233
+make order-worker              # the Order-Ahead worker (host process, so F6 = Ctrl-C + rerun)
 
 make test-orders               # workflow + activity unit tests (time-skipping, no Docker)
 make order-demo                # scripted walkthrough of F1–F6
 ```
+
+The whole stack — including the Temporal engine — runs in Docker; only the worker runs as a
+local `uv` process so the F6 demo can crash and restart it easily. The dev server keeps its
+in-memory history while the worker restarts (that's what F6 relies on).
 
 Drive it by hand with the `coffee-order` CLI:
 
