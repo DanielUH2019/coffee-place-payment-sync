@@ -150,6 +150,47 @@ The default Compose stack starts two shards, `postgres-shard-0` and `postgres-sh
 Shard routing is static: `sha256(requestId) % shard_count`. Configure shards with
 `COFFEE_SYNC_DB_SHARDS`, a comma-separated list of Postgres DSNs.
 
+## HW4 — Order-Ahead workflow (Temporal)
+
+A durable [Temporal](https://temporal.io) workflow that orchestrates a whole mobile
+order-ahead order — validate/price → reserve inventory → take payment → barista queue →
+pickup → loyalty — reacting to external signals and timers and surviving worker crashes.
+The `take_payment` activity reuses the same reliable payments stack (deterministic
+idempotency, 4xx-vs-5xx) as the rest of this repo; inventory, loyalty, refunds, barista,
+and push are simulated activities. See [`docs/order-ahead.md`](docs/order-ahead.md) for the
+engine-choice / determinism / compensation report and
+[`docs/order-ahead-states.md`](docs/order-ahead-states.md) for the state diagram.
+
+```bash
+make up                        # external-app + toxiproxy (live Payments API on :9091)
+make temporal-up               # dockerised Temporal dev server + Web UI on http://localhost:8233
+make order-worker              # the Order-Ahead worker (host process, so F6 = Ctrl-C + rerun)
+
+make test-orders               # workflow + activity unit tests (time-skipping, no Docker)
+make order-demo                # scripted walkthrough of F1–F6
+```
+
+The whole stack — including the Temporal engine — runs in Docker; only the worker runs as a
+local `uv` process so the F6 demo can crash and restart it easily. The dev server keeps its
+in-memory history while the worker restarts (that's what F6 relies on).
+
+Drive it by hand with the `coffee-order` CLI:
+
+```bash
+cd client
+uv run coffee-order start --store store-london-01 --items LATTE:2,COLD_BREW:1   # prints workflow id
+uv run coffee-order signal <id> ready          # barista marks drinks ready
+uv run coffee-order signal <id> collected      # customer collects
+uv run coffee-order signal <id> cancel         # customer cancels
+uv run coffee-order signal <id> substitute accept   # accept an out-of-stock substitution
+uv run coffee-order query  <id>                # current order state
+```
+
+Demo flags map to the graded scenarios: `--decline` (F2), `--out-of-stock` (F3), and the
+`--sub-deadline / --brew-sla / --pickup-ttl` seconds knobs shrink the timers (F3/F5) so the
+live demo runs in seconds. F1 is driven by injecting a Toxiproxy timeout
+(`make inject-timeout`) so the payment retries; F6 by killing and restarting the worker.
+
 ## Layout
 
 | Path | What |
@@ -160,5 +201,7 @@ Shard routing is static: `sha256(requestId) % shard_count`. Configure shards wit
 | `docker-compose.yml` | wires `external-app` + `toxiproxy` + `client` |
 | `postgres-shard-0/1` | Compose services for the async API's sharded Postgres storage |
 | `external/` | the Central System, as a **git submodule** (never edited here) |
+| `client/coffee_sync/orders/` | HW4 Order-Ahead Temporal workflow, activities, worker, `coffee-order` CLI |
+| `docs/order-ahead*.md` | HW4 report (engine/determinism/compensation) + state diagram |
 | `scripts/` | Toxiproxy inject/reset helpers + the demo |
 | `examples/payments.csv` | sample notebook export |

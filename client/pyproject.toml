@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.115",
     "httpx>=0.27",
     "psycopg[binary]>=3.2",
+    "temporalio>=1.7",
     "tenacity>=8.2",
     "uvicorn[standard]>=0.30",
 ]
@@ -22,6 +23,8 @@ dev = [
 coffee-sync = "coffee_sync.cli:main"
 coffee-sync-api = "coffee_sync.api:main"
 coffee-sync-worker = "coffee_sync.worker:main"
+coffee-order-worker = "coffee_sync.orders.worker:main"
+coffee-order = "coffee_sync.orders.starter:main"
 
 [build-system]
 requires = ["setuptools>=68"]

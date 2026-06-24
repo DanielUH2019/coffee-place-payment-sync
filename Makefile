@@ -8,7 +8,8 @@ LB_REPLICAS ?= 3
         inject-latency inject-timeout reset-toxics \
         test test-integration lint clean \
         async-up async-down async-test async-demo \
-        lb-test lb-up lb-down lb-demo test-lb-integration
+        lb-test lb-up lb-down lb-demo test-lb-integration \
+        temporal-up order-worker order-demo test-orders
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -91,3 +92,17 @@ test-lb-integration: lb-up ## Live load-balancer integration tests (drives docke
 	cd client && LB_URL=http://localhost:8090 \
 		LB_COMPOSE="$(LB_COMPOSE)" \
 		uv run pytest -m integration tests/integration/test_load_balancer.py -v
+
+# ── Order-Ahead durable workflow (homework 4, Temporal) ──────────────────────
+
+temporal-up: ## Start the dockerised Temporal dev server (in-memory; Web UI on :8233)
+	docker compose up -d temporal
+
+order-worker: ## Run the Order-Ahead Temporal worker (needs temporal-up + make up)
+	cd client && uv run coffee-order-worker
+
+order-demo: ## Walk the F1–F6 demo scenarios against a running worker
+	./scripts/order_demo.sh
+
+test-orders: ## Run the workflow unit tests (Temporal time-skipping, no Docker)
+	cd client && uv run pytest -m "not integration" tests/unit/test_orders_*.py -v

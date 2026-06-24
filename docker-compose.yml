@@ -67,6 +67,23 @@ services:
       - ./out:/work/out
     working_dir: /work
 
+  temporal:
+    # Single-container Temporal dev server (in-memory) for the HW4 Order-Ahead workflow.
+    # In-memory state survives *worker* restarts (what F6 needs) as long as this container
+    # stays up; it is not meant to survive a restart of the Temporal container itself.
+    image: temporalio/temporal:latest
+    container_name: coffee-temporal
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--log-level", "warn"]
+    ports:
+      - "7233:7233" # gRPC frontend — workers/clients connect here
+      - "8233:8233" # Web UI — http://localhost:8233
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "localhost:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
   postgres-shard-0:
     image: postgres:16-alpine
     container_name: coffee-postgres-shard-0
