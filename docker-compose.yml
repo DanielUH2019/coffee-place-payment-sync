@@ -66,3 +66,77 @@ services:
       - ./examples:/work/examples:ro
       - ./out:/work/out
     working_dir: /work
+
+  postgres-shard-0:
+    image: postgres:16-alpine
+    container_name: coffee-postgres-shard-0
+    environment:
+      POSTGRES_DB: coffee
+      POSTGRES_USER: coffee
+      POSTGRES_PASSWORD: coffee
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-shard-0-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coffee -d coffee"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  postgres-shard-1:
+    image: postgres:16-alpine
+    container_name: coffee-postgres-shard-1
+    environment:
+      POSTGRES_DB: coffee
+      POSTGRES_USER: coffee
+      POSTGRES_PASSWORD: coffee
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-shard-1-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coffee -d coffee"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  async-api:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    image: coffee-place-payment-sync-client
+    container_name: coffee-async-api
+    entrypoint: ["coffee-sync-api"]
+    depends_on:
+      postgres-shard-0:
+        condition: service_healthy
+      postgres-shard-1:
+        condition: service_healthy
+    environment:
+      COFFEE_SYNC_DB_SHARDS: "postgresql://coffee:coffee@postgres-shard-0:5432/coffee,postgresql://coffee:coffee@postgres-shard-1:5432/coffee"
+    ports:
+      - "8000:8000"
+
+  async-worker:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    image: coffee-place-payment-sync-client
+    container_name: coffee-async-worker
+    entrypoint: ["coffee-sync-worker"]
+    depends_on:
+      postgres-shard-0:
+        condition: service_healthy
+      postgres-shard-1:
+        condition: service_healthy
+      toxiproxy:
+        condition: service_healthy
+    environment:
+      COFFEE_SYNC_DB_SHARDS: "postgresql://coffee:coffee@postgres-shard-0:5432/coffee,postgresql://coffee:coffee@postgres-shard-1:5432/coffee"
+      COFFEE_SYNC_BASE_URL: "http://toxiproxy:9091"
+      COFFEE_SYNC_WORKER_POLL_SECONDS: "1.0"
+
+volumes:
+  postgres-shard-0-data:
+  postgres-shard-1-data:

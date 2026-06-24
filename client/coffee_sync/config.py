@@ -49,3 +49,12 @@ DEFAULT_TIMEOUT_SECONDS = 10.0
 DEFAULT_MAX_RETRIES = 6
 DEFAULT_BACKOFF_INITIAL = 0.5  # seconds
 DEFAULT_BACKOFF_MAX = 10.0  # seconds
+
+# --- async request service ---------------------------------------------------
+# Comma-separated Postgres DSNs, one per shard. Docker Compose supplies two shards
+# by default; local tests may override this with their own DSNs.
+DEFAULT_DB_SHARDS = os.environ.get("COFFEE_SYNC_DB_SHARDS", "")
+
+# Background worker polling cadence.
+DEFAULT_WORKER_POLL_SECONDS = float(os.environ.get("COFFEE_SYNC_WORKER_POLL_SECONDS", "1.0"))
+DEFAULT_WORKER_BATCH_SIZE = int(os.environ.get("COFFEE_SYNC_WORKER_BATCH_SIZE", "25"))

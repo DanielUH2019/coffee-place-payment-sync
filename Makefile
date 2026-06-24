@@ -7,6 +7,7 @@ LB_REPLICAS ?= 3
 .PHONY: help up down logs build sync demo \
         inject-latency inject-timeout reset-toxics \
         test test-integration lint clean \
+        async-up async-down async-test async-demo \
         lb-test lb-up lb-down lb-demo test-lb-integration
 
 help: ## Show this help
@@ -51,6 +52,23 @@ test-integration: up ## Run live end-to-end tests against the running stack
 
 clean: ## Remove generated output
 	rm -rf out client/.venv client/.pytest_cache
+
+# ── Async bulk payment requests + sharded Postgres ───────────────────────────
+
+async-up: ## Start async API + worker + two Postgres shards
+	docker compose up --build -d \
+		postgres-shard-0 postgres-shard-1 external-app toxiproxy async-api async-worker
+
+async-down: ## Stop and remove the async stack
+	docker compose down -v
+
+async-test: ## Run async unit tests
+	cd client && uv run pytest -m "not integration" tests/unit/test_async_*.py -v
+
+async-demo: async-up ## Submit a sample async bulk request
+	curl -fsS -X POST http://localhost:8000/api/v1/payment-requests \
+		-H 'Content-Type: application/json' \
+		-d '{"defaultStoreId":"coffee-place-001","payments":[{"coffeeType":"LATTE","price":"3.50","currency":"EUR","loyaltyCardId":"async-card-1"},{"coffeeType":"ESPRESSO","price":"2.00","currency":"EUR","loyaltyCardId":"async-card-2"}]}'
 
 # ── Redirect load balancer (homework 2) ──────────────────────────────────────
 
