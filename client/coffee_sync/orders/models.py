@@ -51,6 +51,12 @@ class OrderRequest:
     # needs no flag. ponytail: per-order flags beat fragile worker-env wiring for a demo.
     simulate_out_of_stock: bool = False
     simulate_payment_decline: bool = False
+    # Timer durations (seconds). Defaults match the assignment (10-min brew SLA,
+    # 30-min pickup). The starter CLI shrinks these for the live demo; tests rely on
+    # Temporal's time-skipping so the real values fire instantly.
+    sub_deadline_seconds: int = 120
+    brew_sla_seconds: int = 600
+    pickup_ttl_seconds: int = 1800
 
 
 @dataclass
