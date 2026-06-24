@@ -1,0 +1,2 @@
+# Compiled LB binary from a local `go build .` (the Docker image builds in-container).
+/redirect-lb

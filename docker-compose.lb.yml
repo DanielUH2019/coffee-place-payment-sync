@@ -1,0 +1,49 @@
+# Overlay that adds the redirect load balancer in front of N payment-app replicas.
+#
+# Apply on top of the base stack:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.lb.yml \
+#       up -d --build --scale external-app-lb=3 external-app-lb lb
+#
+#   # send traffic through the LB (the client follows the 307 to a backend):
+#   docker compose -f docker-compose.yml -f docker-compose.lb.yml \
+#       run --rm --no-deps -e COFFEE_SYNC_BASE_URL=http://lb:8090 client examples/payments.csv
+#
+# `external-app-lb` is a SCALABLE clone of `external-app`: no container_name and
+# no fixed host-port binding, so `--scale` can spin up many replicas. Docker's
+# embedded DNS then resolves the name `external-app-lb` to one A record per
+# replica — that resolved set IS the LB's backend table (zero app changes).
+
+services:
+  external-app-lb:
+    build:
+      context: .
+      dockerfile: docker/external.Dockerfile
+    # NOTE: deliberately no container_name and no host `ports:` mapping — those
+    # would conflict the moment you scale past one replica. Reachable only on
+    # the compose network (which is where the LB and the dockerised client live).
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-H", "Store-Id: healthcheck", "http://localhost:8080/api/v1/payments?storeId=healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  lb:
+    build:
+      context: ./redirect-lb
+      dockerfile: ../docker/lb.Dockerfile
+    container_name: coffee-lb
+    depends_on:
+      external-app-lb:
+        condition: service_healthy
+    ports:
+      - "8090:8090" # the LB's public ingress (host-reachable)
+    environment:
+      LB_LISTEN: ":8090"
+      LB_BACKEND_SERVICE: "external-app-lb" # Docker DNS resolves this to all replicas
+      LB_BACKEND_PORT: "8080"
+      LB_REDIRECT_STATUS: "307" # preserve POST method+body across the redirect
+      LB_ALGO: "roundrobin"
